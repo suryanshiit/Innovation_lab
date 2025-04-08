@@ -6,6 +6,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import os
 from dotenv import load_dotenv
+from collections import deque  # ✅ For fixed-size recent readings
 
 load_dotenv()
 
@@ -16,22 +17,22 @@ TOPIC = "fire_status"
 # MongoDB Connection
 MONGO_URI = os.getenv("MONGO_URI")
 client = pymongo.MongoClient(MONGO_URI)
-db = client.fire_sensor_data  # Database name
-collection = db.readings  # Collection name
+db = client.fire_sensor_data
+collection = db.readings
 
 # Email Configuration
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")
 RECEIVER_EMAIL = "suryansh16103@gmail.com"
-PASSWORD = os.getenv("EMAIL_PASSWORD")  # Use an app password for Gmail
+PASSWORD = os.getenv("EMAIL_PASSWORD")
 
-# Fire detection thresholds
-ANALOG_THRESHOLD = 400  # Change this based on sensor calibration
+# Fire detection settings
+analog_readings = deque(maxlen=50)  # ✅ Stores last 50 analog readings
+DYNAMIC_MARGIN = 0.2  # 20% above the average
 
-# Track last time email was sent
-last_email_time = datetime.min  # Initialize to a time far in the past
+# Track last email time
+last_email_time = datetime.min
 
 def send_email_alert(sensor_data):
-    """Send an email alert when fire is detected."""
     subject = "🔥 Fire Alert! Immediate Attention Needed!"
     body = f"""
     Fire detected at Node {sensor_data['node_id']}!
@@ -45,7 +46,6 @@ def send_email_alert(sensor_data):
     
     Please take immediate action!
     """
-
     msg = MIMEMultipart()
     msg["From"] = SENDER_EMAIL
     msg["To"] = RECEIVER_EMAIL
@@ -54,7 +54,7 @@ def send_email_alert(sensor_data):
 
     try:
         server = smtplib.SMTP("smtp.gmail.com", 587)
-        server.starttls()  # Secure connection
+        server.starttls()
         server.login(SENDER_EMAIL, PASSWORD)
         server.sendmail(SENDER_EMAIL, RECEIVER_EMAIL, msg.as_string())
         server.quit()
@@ -63,8 +63,7 @@ def send_email_alert(sensor_data):
         print("❌ Error sending email:", e)
 
 def on_message(client, userdata, msg):
-    """Callback function when an MQTT message is received."""
-    global last_email_time
+    global last_email_time, analog_readings
 
     payload = msg.payload.decode("utf-8")
     print(f"📩 Received MQTT Message: {payload}")
@@ -83,27 +82,31 @@ def on_message(client, userdata, msg):
         collection.insert_one(sensor_data)
         print("✅ Data inserted into MongoDB:", sensor_data)
 
-        # Check for fire detection
+        # Add to analog reading history
+        analog_readings.append(sensor_data["analog_sensor"])
+        analog_avg = sum(analog_readings) / len(analog_readings) if analog_readings else 0
+        dynamic_threshold = analog_avg * (1 + DYNAMIC_MARGIN)
+
+        # Fire detection
         fire_detected = (
             sensor_data["sensor1"] == 1 or
             sensor_data["sensor2"] == 1 or
-            sensor_data["analog_sensor"] > ANALOG_THRESHOLD
+            sensor_data["analog_sensor"] > dynamic_threshold
         )
 
         if fire_detected:
-            print("🚨 Fire detected!")
+            print(f"🚨 Fire detected! (Analog: {sensor_data['analog_sensor']} > Dynamic Threshold: {dynamic_threshold:.2f})")
 
-            # Only send email if 60 seconds have passed
             if datetime.utcnow() - last_email_time >= timedelta(minutes=1):
                 send_email_alert(sensor_data)
                 last_email_time = datetime.utcnow()
             else:
                 print("⏳ Email alert skipped to avoid spamming.")
         else:
-            print("🟢 No fire detected.")
+            print(f"🟢 No fire detected. (Analog: {sensor_data['analog_sensor']} <= Dynamic Threshold: {dynamic_threshold:.2f})")
     
     except Exception as e:
-        print("❌ Error parsing or inserting data:", e)
+        print("❌ Error parsing or inserting data: ", e)
 
 # MQTT Setup
 mqtt_client = mqtt.Client()

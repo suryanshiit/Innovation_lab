@@ -7,8 +7,8 @@ int sampleIndex = 0;
 bool bufferFilled = false;
 
 // WiFi Credentials
-const char* ssid = "prrockzedWifi";
-const char* password = "yothereyes";
+const char* ssid = "Someone";
+const char* password = "champion";
 
 // MQTT Broker Settings
 const char* broker = "3.109.19.112";
@@ -115,6 +115,6 @@ void loop() {
         digitalWrite(LED, LOW);
     }
 
-    delay(1000);
+    delay(3000);
 }
 
