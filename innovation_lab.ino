@@ -1,6 +1,11 @@
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 
+#define SAMPLE_SIZE 100
+int analogSamples[SAMPLE_SIZE];
+int sampleIndex = 0;
+bool bufferFilled = false;
+
 // WiFi Credentials
 const char* ssid = "prrockzedWifi";
 const char* password = "yothereyes";
@@ -9,7 +14,7 @@ const char* password = "yothereyes";
 const char* broker = "3.109.19.112";
 const char* topic = "fire_status";
 
-int node_id = 2;
+int node_id = 1;
 
 // Define Sensor Pins
 #define SENSOR1 5    // GPIO5 (D1) - Digital Sensor 1
@@ -76,18 +81,35 @@ void loop() {
     int sensor2_state = digitalRead(SENSOR2);
     int analog_value = analogRead(ANALOG_SENSOR);
 
-    // Construct payload with node_id
+    // Store the analog value in the buffer
+    analogSamples[sampleIndex] = analog_value;
+    sampleIndex = (sampleIndex + 1) % SAMPLE_SIZE;
+    if (sampleIndex == 0) bufferFilled = true;
+
+    // Calculate average
+    int total = 0;
+    int sampleCount = bufferFilled ? SAMPLE_SIZE : sampleIndex;
+    for (int i = 0; i < sampleCount; i++) {
+        total += analogSamples[i];
+    }
+    float analog_avg = total / float(sampleCount);
+
+    // Construct payload with node_id and values
     String payload = "{" + String(node_id) + " " + String(1) + " " + String(sensor1_state) + " " +
                            String(2) + " " + String(sensor2_state) + " " +
                            String(3) + " " + String(analog_value) + "}";
 
     Serial.print("Publishing: ");
     Serial.println(payload);
+    Serial.print("Analog Value: ");
+    Serial.print(analog_value);
+    Serial.print(" | Average: ");
+    Serial.println(analog_avg);
 
     client.publish(topic, payload.c_str());
 
-    // LED turns ON if any sensor detects fire
-    if (sensor1_state == HIGH || sensor2_state == HIGH || analog_value > 500) {
+    // LED ON if any digital sensor detects fire or analog exceeds dynamic threshold
+    if (sensor1_state == HIGH || sensor2_state == HIGH || analog_value > analog_avg + 20) {
         digitalWrite(LED, HIGH);
     } else {
         digitalWrite(LED, LOW);

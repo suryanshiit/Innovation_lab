@@ -4,7 +4,7 @@ from email.mime.multipart import MIMEMultipart
 
 # Sender and Receiver details
 sender_email = "suryanshkgp@gmail.com"
-receiver_email = "suryansh16103@gmail.com"
+receiver_email = "priyanshuranjan2806@gmail.com"
 password = "mergexcgbqlnfhbk"  # Use an app password if using Gmail
 
 # Create Email Message

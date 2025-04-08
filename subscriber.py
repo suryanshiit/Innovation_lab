@@ -1,13 +1,16 @@
 import paho.mqtt.client as mqtt
 import pymongo
 from datetime import datetime
+import os 
+from dotenv import load_dotenv
+load_dotenv()
 
 # MQTT Broker Details
-BROKER = "3.109.19.112"
+BROKER = os.getenv("MQTT_BROKER")
 TOPIC = "fire_status"
 
 # MongoDB Connection
-MONGO_URI = "mongodb+srv://suryanshkgp:m3$JviM$d*X32cB@cluster0.lgvfa.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+MONGO_URI = os.getenv("MONGO_URI")
 client = pymongo.MongoClient(MONGO_URI)
 db = client.fire_sensor_data  # Database name
 collection = db.readings  # Collection name
