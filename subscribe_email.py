@@ -1,7 +1,7 @@
 import smtplib
 import paho.mqtt.client as mqtt
 import pymongo
-from datetime import datetime
+from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import os
@@ -26,6 +26,9 @@ PASSWORD = os.getenv("EMAIL_PASSWORD")  # Use an app password for Gmail
 
 # Fire detection thresholds
 ANALOG_THRESHOLD = 400  # Change this based on sensor calibration
+
+# Track last time email was sent
+last_email_time = datetime.min  # Initialize to a time far in the past
 
 def send_email_alert(sensor_data):
     """Send an email alert when fire is detected."""
@@ -61,28 +64,41 @@ def send_email_alert(sensor_data):
 
 def on_message(client, userdata, msg):
     """Callback function when an MQTT message is received."""
+    global last_email_time
+
     payload = msg.payload.decode("utf-8")
     print(f"📩 Received MQTT Message: {payload}")
     
-    # Parse message
     try:
         data = payload.strip("{} ").split()
         sensor_data = {
-            "node_id": int(data[0]),  # Extract node_id
+            "node_id": int(data[0]),
             "sensor1": int(data[2]),
             "sensor2": int(data[4]),
             "analog_sensor": int(data[6]),
             "timestamp": datetime.utcnow()
         }
-        
+
         # Insert into MongoDB
         collection.insert_one(sensor_data)
         print("✅ Data inserted into MongoDB:", sensor_data)
 
-        # Check for fire detection and send email alert
-        if sensor_data["sensor1"] == 1 or sensor_data["sensor2"] == 1 or sensor_data["analog_sensor"] > ANALOG_THRESHOLD:
-            print("🚨 Fire detected! Sending alert email...")
-            send_email_alert(sensor_data)
+        # Check for fire detection
+        fire_detected = (
+            sensor_data["sensor1"] == 1 or
+            sensor_data["sensor2"] == 1 or
+            sensor_data["analog_sensor"] > ANALOG_THRESHOLD
+        )
+
+        if fire_detected:
+            print("🚨 Fire detected!")
+
+            # Only send email if 60 seconds have passed
+            if datetime.utcnow() - last_email_time >= timedelta(minutes=1):
+                send_email_alert(sensor_data)
+                last_email_time = datetime.utcnow()
+            else:
+                print("⏳ Email alert skipped to avoid spamming.")
         else:
             print("🟢 No fire detected.")
     
